@@ -21,16 +21,63 @@ fake_permissions_db = {
 next_doc_id=4
 
 def get_user(user_id: int):
+    if type(user_id) is not int or user_id <= 0:
+        return None
     return fake_users_db.get(user_id)
 
 def get_document(doc_id: int):
+    if type(doc_id) is not int or doc_id <= 0:
+        return None
     return fake_documents_db.get(doc_id)
 
+def get_documents(user_id: int):
+    if type(user_id) is not int or user_id <= 0:
+        return None
+    docs = []
+    for doc in fake_documents_db.values():
+        if doc["created_by"] == user_id:
+            docs.append(doc)
+            continue
+        perms = fake_permissions_db.get(doc["id"], [])
+        for p in perms:
+            if p["user_id"] == user_id:
+                docs.append(doc)
+                break
+        if doc["is_public"] and doc not in docs:
+            docs.append(doc)
+
+    return docs
+
+def get_shared_documents(user_id: int):
+    if type(user_id) is not int or user_id <= 0:
+        return []
+
+    shared_docs = []
+    for doc in fake_documents_db.values():
+        if doc["is_public"]:
+            shared_docs.append(doc)
+
+    return shared_docs
+
 def get_permissions(user_id: int):
+    if type(user_id) is not int or user_id <= 0:
+        return None
     return fake_permissions_db.get(user_id)
 
 def create_document(title: str, content: str, category: str, is_public : bool, user_id: int):
     global next_doc_id
+
+    if type(title) is not str or title.strip() == "":
+        return None
+    if type(content) is not str:
+        return None
+    if type(category) is not str or category.strip() == "":
+        return None
+    if type(is_public) is not bool:
+        return None
+    if get_user(user_id) is None:
+        return None
+
     row={
         "id": next_doc_id,
         "title": title,
@@ -41,12 +88,15 @@ def create_document(title: str, content: str, category: str, is_public : bool, u
         "created_at": now_iso_time(),
         "last_modified": now_iso_time()
     }
+
     fake_documents_db[next_doc_id] = row
     fake_permissions_db[next_doc_id] = [{"user_id": user_id, "permission_level": "write"}]
     next_doc_id += 1
     return row
 
-def update_document(doc_id: int, title=None, content=None, category=None, is_public=None):
+def update_document(doc_id: int, title: str or None, content: str or None, category: str or None, is_public: bool or None):
+    if type(doc_id) is not int or doc_id <= 0:
+        return None
     row = fake_documents_db.get(doc_id)
     if not row:
         return None
