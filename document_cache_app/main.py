@@ -1,18 +1,22 @@
-from httpx import AsyncClient
 from fastapi import FastAPI, Request, HTTPException
-from parso.cache import clear_cache
+import document_cache_app.cache_manager as cache_manager
 
 app = FastAPI()
-redis = createClient()
+
 
 @app.get("/documents")
 async def documents(request: Request):
     try:
-        user_id =  request.headers["X-User-ID"]
+        user_id = int(request.headers["X-User-ID"])
     except:
         raise HTTPException(status_code=404)
-
     try:
+        cache = cache_manager.get_user_documents(user_id)
+        if cache:
+            return cache
+
+
+
 
 
 
