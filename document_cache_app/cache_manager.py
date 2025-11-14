@@ -81,7 +81,7 @@ async def invalidate_cache_pattern(pattern: str) -> List[str]:
             invalidated_keys.append(key)
             
         return invalidated_keys
-    except redis.exceptions.RedisError as e:
+    except exceptions.RedisError as e:
         return invalidated_keys
 
 async def get_user_documents(user_id: int) -> Optional[List[dict]]:
