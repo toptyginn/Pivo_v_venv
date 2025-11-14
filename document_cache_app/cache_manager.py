@@ -1,3 +1,4 @@
+import redis as _redis
 import redis.asyncio as redis
 import json
 from typing import Optional, Any, List
@@ -11,7 +12,7 @@ REDIS_PORT = os.getenv('REDIS_PORT', 6379)
 
 try:
     redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-except redis.exceptions.ConnectionError as e:
+except _redis.exceptions.ConnectionError as e:
     redis_client = None
 
 USER_DOCS_TTL = 5 * 60
@@ -33,117 +34,115 @@ def _get_permissions_key(doc_id: int) -> str:
     return f"document:{doc_id}:permissions"
 
 
-def get_cache(key: str) -> Optional[Any]:
+async def get_cache(key: str) -> Optional[Any]:
     if not redis_client:
         return None
         
     try:
-        cached_data = redis_client.get(key)
+        cached_data = await redis_client.get(key)
         if cached_data:
             return json.loads(cached_data)
         return None
-    except redis.exceptions.RedisError as e:
+    except _redis.exceptions.RedisError as e:
         return None
     except json.JSONDecodeError as e:
-        invalidate_cache(key)
+        await invalidate_cache(key)
         return None
 
-def set_cache(key: str, value: Any, ttl: int):
+async def set_cache(key: str, value: Any, ttl: int):
     if not redis_client:
         return
         
     try:
         serialized_data = json.dumps(value)
-        redis_client.setex(key, ttl, serialized_data)
+        await redis_client.setex(key, ttl, serialized_data)
     except redis.exceptions.RedisError as e:
         pass
     except TypeError as e:
         pass
 
-def invalidate_cache(key: str):
+async def invalidate_cache(key: str):
     if not redis_client:
         return
         
     try:
-        redis_client.delete(key)
+        await redis_client.delete(key)
     except redis.exceptions.RedisError as e:
         pass
 
-def invalidate_cache_pattern(pattern: str) -> List[str]:
+async def invalidate_cache_pattern(pattern: str) -> List[str]:
     if not redis_client:
         return []
 
     invalidated_keys = []
     try:
-        for key in redis_client.scan_iter(match=pattern):
-            redis_client.delete(key)
+        async for key in redis_client.scan_iter(match=pattern):
+            await redis_client.delete(key)
             invalidated_keys.append(key)
             
         return invalidated_keys
     except redis.exceptions.RedisError as e:
         return invalidated_keys
 
-def get_user_documents(user_id: int) -> Optional[List[dict]]:
-    return get_cache(_get_user_docs_key(user_id))
+async def get_user_documents(user_id: int) -> Optional[List[dict]]:
+    return await get_cache(_get_user_docs_key(user_id))
 
-def set_user_documents(user_id: int, documents: List[dict]):
-    set_cache(_get_user_docs_key(user_id), documents, USER_DOCS_TTL)
+async def set_user_documents(user_id: int, documents: List[dict]):
+    await set_cache(_get_user_docs_key(user_id), documents, USER_DOCS_TTL)
 
-def invalidate_user_documents(user_id: int):
-    invalidate_cache(_get_user_docs_key(user_id))
+async def invalidate_user_documents(user_id: int):
+    await invalidate_cache(_get_user_docs_key(user_id))
 
-def invalidate_user_documents_for_list(user_ids: List[int]):
+async def invalidate_user_documents_for_list(user_ids: List[int]):
     if not redis_client:
         return
         
     try:
-        pipe = redis_client.pipeline()
-        keys_to_delete = []
-        for user_id in user_ids:
-            key = _get_user_docs_key(user_id)
-            keys_to_delete.append(key)
-            pipe.delete(key)
-        pipe.execute()
+        async with redis_client.pipeline() as pipe:
+            for user_id in user_ids:
+                key = _get_user_docs_key(user_id)
+                pipe.delete(key)
+            await pipe.execute()
     except redis.exceptions.RedisError as e:
         pass
 
-def get_shared_documents() -> Optional[List[dict]]:
-    return get_cache(_get_shared_docs_key())
+async def get_shared_documents() -> Optional[List[dict]]:
+    return await get_cache(_get_shared_docs_key())
 
-def set_shared_documents(documents: List[dict]):
-    set_cache(_get_shared_docs_key(), documents, SHARED_DOCS_TTL)
+async def set_shared_documents(documents: List[dict]):
+    await set_cache(_get_shared_docs_key(), documents, SHARED_DOCS_TTL)
 
-def invalidate_shared_documents():
-    invalidate_cache(_get_shared_docs_key())
+async def invalidate_shared_documents():
+    await invalidate_cache(_get_shared_docs_key())
 
-def get_document_by_user(user_id: int, doc_id: int) -> Optional[dict]:
-    return get_cache(_get_single_doc_key(user_id, doc_id))
+async def get_document_by_user(user_id: int, doc_id: int) -> Optional[dict]:
+    return await get_cache(_get_single_doc_key(user_id, doc_id))
 
-def set_document_by_user(user_id: int, doc_id: int, document: dict):
-    set_cache(_get_single_doc_key(user_id, doc_id), document, SINGLE_DOC_TTL)
+async def set_document_by_user(user_id: int, doc_id: int, document: dict):
+    await set_cache(_get_single_doc_key(user_id, doc_id), document, SINGLE_DOC_TTL)
 
-def invalidate_document_for_all_users(doc_id: int) -> List[str]:
+async def invalidate_document_for_all_users(doc_id: int) -> List[str]:
     pattern = _get_single_doc_key("*", doc_id)
-    return invalidate_cache_pattern(pattern)
+    return await invalidate_cache_pattern(pattern)
 
-def invalidate_specific_user_document(user_id: int, doc_id: int):
-    invalidate_cache(_get_single_doc_key(user_id, doc_id))
+async def invalidate_specific_user_document(user_id: int, doc_id: int):
+    await invalidate_cache(_get_single_doc_key(user_id, doc_id))
 
-def get_document_permissions(doc_id: int) -> Optional[List[dict]]:
-    return get_cache(_get_permissions_key(doc_id))
+async def get_document_permissions(doc_id: int) -> Optional[List[dict]]:
+    return await get_cache(_get_permissions_key(doc_id))
 
-def set_document_permissions(doc_id: int, permissions: List[dict]):
-    set_cache(_get_permissions_key(doc_id), permissions, PERMISSIONS_TTL)
+async def set_document_permissions(doc_id: int, permissions: List[dict]):
+    await set_cache(_get_permissions_key(doc_id), permissions, PERMISSIONS_TTL)
 
-def invalidate_document_permissions(doc_id: int):
-    invalidate_cache(_get_permissions_key(doc_id))
+async def invalidate_document_permissions(doc_id: int):
+    await invalidate_cache(_get_permissions_key(doc_id))
 
-def clear_all_cache() -> bool:
+async def clear_all_cache() -> bool:
     if not redis_client:
         return False
         
     try:
-        redis_client.flushdb()
+        await redis_client.flushdb()
         return True
     except redis.exceptions.RedisError as e:
         return False
