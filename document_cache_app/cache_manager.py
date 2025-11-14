@@ -1,4 +1,4 @@
-import redis as _redis
+from redis import exceptions
 import redis.asyncio as redis
 import json
 from typing import Optional, Any, List
@@ -12,7 +12,7 @@ REDIS_PORT = os.getenv('REDIS_PORT', 6379)
 
 try:
     redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-except _redis.exceptions.ConnectionError as e:
+except exceptions.ConnectionError as e:
     redis_client = None
 
 USER_DOCS_TTL = 5 * 60
@@ -43,7 +43,7 @@ async def get_cache(key: str) -> Optional[Any]:
         if cached_data:
             return json.loads(cached_data)
         return None
-    except _redis.exceptions.RedisError as e:
+    except exceptions.RedisError as e:
         return None
     except json.JSONDecodeError as e:
         await invalidate_cache(key)
@@ -56,7 +56,7 @@ async def set_cache(key: str, value: Any, ttl: int):
     try:
         serialized_data = json.dumps(value)
         await redis_client.setex(key, ttl, serialized_data)
-    except redis.exceptions.RedisError as e:
+    except exceptions.RedisError as e:
         pass
     except TypeError as e:
         pass
@@ -67,7 +67,7 @@ async def invalidate_cache(key: str):
         
     try:
         await redis_client.delete(key)
-    except redis.exceptions.RedisError as e:
+    except exceptions.RedisError as e:
         pass
 
 async def invalidate_cache_pattern(pattern: str) -> List[str]:
@@ -103,7 +103,7 @@ async def invalidate_user_documents_for_list(user_ids: List[int]):
                 key = _get_user_docs_key(user_id)
                 pipe.delete(key)
             await pipe.execute()
-    except redis.exceptions.RedisError as e:
+    except exceptions.RedisError as e:
         pass
 
 async def get_shared_documents() -> Optional[List[dict]]:
@@ -144,5 +144,5 @@ async def clear_all_cache() -> bool:
     try:
         await redis_client.flushdb()
         return True
-    except redis.exceptions.RedisError as e:
+    except exceptions.RedisError as e:
         return False
